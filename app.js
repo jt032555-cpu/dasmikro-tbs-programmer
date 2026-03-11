@@ -202,6 +202,7 @@ const tbsApp = (() => {
   let _settings    = null;
   let _logLines    = [];
   let _lightStates = [false, false, false, false, false, false];
+  let _portDisconnectHandler = null;
 
   /* ────────────────────────────────────────────────────────
      INIT
@@ -235,6 +236,20 @@ const tbsApp = (() => {
     _initPinTooltips();
 
     _log('info', 'TBS Mini Programmer ready. Connect your USB adapter to begin.');
+
+    // Listen for serial port connect/disconnect events
+    if ('serial' in navigator) {
+      navigator.serial.addEventListener('connect', () => {
+        _log('info', 'USB serial device plugged in');
+      });
+      navigator.serial.addEventListener('disconnect', () => {
+        _log('info', 'USB serial device unplugged');
+        if (_connected) disconnect();
+      });
+
+      // Clean up any previously authorized but stale ports
+      _forceCleanup();
+    }
   }
 
   /* ────────────────────────────────────────────────────────
@@ -242,12 +257,37 @@ const tbsApp = (() => {
   ──────────────────────────────────────────────────────── */
   async function connect() {
     if (_connected || _connecting) return;
+
+    // Clean up any stale connection first
+    await _forceCleanup();
+
     _connecting = true;
     _setStatus('connecting', 'Connecting…');
 
     try {
       _port = await navigator.serial.requestPort();
-      await _port.open({ baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none' });
+
+      // Small delay for USB-to-serial adapters (CP2102, CH340, FTDI)
+      await new Promise(r => setTimeout(r, 300));
+
+      // Attempt to open with retry
+      let opened = false;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          await _port.open({ baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none', bufferSize: 255 });
+          opened = true;
+          break;
+        } catch (openErr) {
+          if (attempt < 2) {
+            _log('info', `Open attempt ${attempt} failed, retrying…`);
+            // Try closing first in case it was left open
+            try { await _port.close(); } catch (_) {}
+            await new Promise(r => setTimeout(r, 500));
+          } else {
+            throw openErr;
+          }
+        }
+      }
 
       _writer = _port.writable.getWriter();
       _reader = _port.readable.getReader();
@@ -267,6 +307,16 @@ const tbsApp = (() => {
 
       _log('info', 'Connected at 9600 baud, 8N1');
 
+      // Listen for unexpected disconnect (USB unplug) — remove any prior listener first
+      if (_portDisconnectHandler) {
+        _port.removeEventListener('disconnect', _portDisconnectHandler);
+      }
+      _portDisconnectHandler = () => {
+        _log('error', 'USB adapter was unplugged!');
+        disconnect();
+      };
+      _port.addEventListener('disconnect', _portDisconnectHandler);
+
       // Start read loop
       _readLoop = _startReadLoop();
 
@@ -275,14 +325,14 @@ const tbsApp = (() => {
       _setStatus('disconnected', 'Connection failed');
       _showError(_friendlyError(err));
       _log('error', `Connection error: ${err.message}`);
+      // Clean up failed attempt
+      await _forceCleanup();
     }
   }
 
   async function disconnect() {
     try {
-      if (_reader) { try { await _reader.cancel(); } catch (_) {/* ignore */} _reader = null; }
-      if (_writer) { try { _writer.releaseLock(); } catch (_) {/* ignore */} _writer = null; }
-      if (_port)   { try { await _port.close();   } catch (_) {/* ignore */} _port = null; }
+      await _forceCleanup();
     } finally {
       _connected  = false;
       _connecting = false;
@@ -295,6 +345,35 @@ const tbsApp = (() => {
       if (_settings.autoReconnect) {
         setTimeout(() => { if (!_connected) connect(); }, 3000);
       }
+    }
+  }
+
+  async function _forceCleanup() {
+    try {
+      if (_reader) {
+        try { await _reader.cancel(); } catch (_) {}
+        try { _reader.releaseLock(); } catch (_) {}
+        _reader = null;
+      }
+      if (_writer) {
+        try { await _writer.close(); } catch (_) {}
+        try { _writer.releaseLock(); } catch (_) {}
+        _writer = null;
+      }
+      if (_port) {
+        try { await _port.close(); } catch (_) {}
+        _port = null;
+      }
+    } catch (_) {}
+
+    // Also try to close any previously authorized ports that might be lingering
+    if (navigator.serial && navigator.serial.getPorts) {
+      try {
+        const ports = await navigator.serial.getPorts();
+        for (const p of ports) {
+          try { await p.close(); } catch (_) {}
+        }
+      } catch (_) {}
     }
   }
 
@@ -773,9 +852,11 @@ const tbsApp = (() => {
     if (msg.includes('no port selected') || msg.includes('user cancelled'))
       return 'No port selected. Click "Connect USB" and choose your USB-to-Serial adapter from the list.';
     if (msg.includes('access denied') || msg.includes('permission'))
-      return 'Permission denied. Make sure only one tab/program is using the serial port.';
+      return 'Permission denied. Make sure only one tab/program is using the serial port. Try unplugging and replugging your USB adapter.';
     if (msg.includes('failed to open'))
-      return 'Could not open port. Check that no other app (like Arduino IDE) has it open.';
+      return 'Could not open port. Try these steps:\n1. Unplug your USB adapter, wait 3 seconds, plug it back in\n2. Close ALL other browser tabs\n3. Close Arduino IDE, PuTTY, or any serial monitors\n4. Try clicking Connect again';
+    if (msg.includes('the port is already open'))
+      return 'Port is already open in another tab or was not closed properly. Try refreshing the page, or unplug and replug your USB adapter.';
     return `Connection error: ${err.message}. Make sure your USB cable is plugged in and you're using Chrome or Edge.`;
   }
 
@@ -865,6 +946,7 @@ const tbsApp = (() => {
     init,
     connect,
     disconnect,
+    forceCleanup: _forceCleanup,
     send,
     engineStart,
     engineStop,

@@ -346,6 +346,7 @@ select:focus, input:focus, textarea:focus {
   color: var(--orange);
   margin-top: 10px;
   display: none;
+  white-space: pre-wrap;
 }
 
 .error-box.show { display: block; }
