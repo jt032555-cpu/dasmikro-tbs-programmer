@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0d1a" />
+  <meta name="description" content="Program and control the DasMikro TBS Mini Sound & Light Unit via USB from your browser." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>DasMikro TBS Programmer</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     STATUS BAR (always visible)
+════════════════════════════════════════════════════════════ -->
+<header id="status-bar">
+  <h1>🎛️ TBS Mini</h1>
+  <div id="conn-status-dot" class="disconnected" title="Connection status"></div>
+  <span id="conn-status-text">Disconnected</span>
+  <span id="port-info"></span>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════
+     MAIN CONTENT
+════════════════════════════════════════════════════════════ -->
+<main id="main-content">
+
+  <!-- ── Browser not supported warning ───────────────────── -->
+  <div id="browser-warning">
+    <p class="bold text-orange">⚠️ Browser Not Supported</p>
+    <p class="mt-8">The Web Serial API is required to connect to your TBS Mini.
+    Please use <strong>Google Chrome 89+</strong> or <strong>Microsoft Edge 89+</strong>
+    on a desktop or Android device.</p>
+  </div>
+
+  <!-- ══════ TAB: CONTROL ═══════════════════════════════════ -->
+  <section id="tab-control" class="tab-panel active">
+
+    <!-- Connection Card -->
+    <div class="card">
+      <div class="card-title">🔌 USB Connection</div>
+
+      <button id="btn-connect" class="btn btn-connect" onclick="tbsApp.connect()">
+        🔌 Connect USB — Click Here to Start
+      </button>
+      <button id="btn-disconnect" class="btn btn-danger mt-8" style="display:none; width:100%"
+        onclick="tbsApp.disconnect()">⏏️ Disconnect</button>
+
+      <div id="conn-error" class="error-box"></div>
+
+      <div class="auto-reconnect-row mt-8">
+        <label class="toggle" title="Automatically reconnect if the device is unplugged">
+          <input type="checkbox" id="chk-autoreconnect" />
+          <span class="toggle-slider"></span>
+        </label>
+        <span>Auto-reconnect on unplug</span>
+      </div>
+    </div>
+
+    <!-- Engine Controls -->
+    <div class="card">
+      <div class="card-title">🚗 Engine Controls</div>
+
+      <div class="flex-row" style="margin-bottom:12px">
+        <button id="btn-engine-start" class="btn btn-success btn-big" onclick="tbsApp.engineStart()">
+          ▶️ Start Engine
+        </button>
+        <button id="btn-engine-stop" class="btn btn-danger btn-big" onclick="tbsApp.engineStop()">
+          ⏹️ Stop Engine
+        </button>
+      </div>
+
+      <div class="rpm-display" id="rpm-display">0</div>
+      <div class="rpm-label">RPM (simulated throttle)</div>
+
+      <div style="margin:12px 0">
+        <label for="rpm-slider">Throttle / RPM</label>
+        <input type="range" id="rpm-slider" min="0" max="100" value="0"
+          oninput="tbsApp.setRpm(this.value)" />
+      </div>
+
+      <div>
+        <label for="engine-type">Engine type (display only)</label>
+        <select id="engine-type" onchange="tbsApp.setEngineType(this.value)">
+          <option value="diesel">🚛 Diesel</option>
+          <option value="gas">🏎️ Gas/Petrol</option>
+          <option value="turbine">✈️ Turbine/Jet</option>
+          <option value="tank">🪖 Tank</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Sound Triggers -->
+    <div class="card">
+      <div class="card-title">🔊 Sound Triggers</div>
+      <div class="sound-grid">
+        <button class="btn btn-warning sound-btn"
+          onmousedown="tbsApp.holdStart(0x21)" onmouseup="tbsApp.holdStop()"
+          ontouchstart="tbsApp.holdStart(0x21)" ontouchend="tbsApp.holdStop()">
+          <span class="icon">📢</span>Horn
+        </button>
+        <button class="btn btn-danger sound-btn"
+          onmousedown="tbsApp.holdStart(0x23)" onmouseup="tbsApp.holdStop()"
+          ontouchstart="tbsApp.holdStart(0x23)" ontouchend="tbsApp.holdStop()">
+          <span class="icon">💥</span>Machine Gun
+        </button>
+        <button class="btn btn-info sound-btn" onclick="tbsApp.send(0x11)">
+          <span class="icon">🎵</span>Sound 1
+        </button>
+        <button class="btn btn-info sound-btn" onclick="tbsApp.send(0x12)">
+          <span class="icon">🎵</span>Sound 2
+        </button>
+        <button class="btn btn-info sound-btn" onclick="tbsApp.send(0x13)">
+          <span class="icon">🎵</span>Sound 3
+        </button>
+        <button class="btn btn-info sound-btn" onclick="tbsApp.send(0x14)">
+          <span class="icon">🎵</span>Sound 4
+        </button>
+        <button class="btn btn-info sound-btn" onclick="tbsApp.send(0x15)">
+          <span class="icon">🎵</span>Sound 5
+        </button>
+        <button class="btn btn-info sound-btn" onclick="tbsApp.send(0x16)">
+          <span class="icon">🎵</span>Sound 6
+        </button>
+        <button class="btn btn-info sound-btn" onclick="tbsApp.send(0x17)">
+          <span class="icon">🎵</span>Sound 7
+        </button>
+        <button class="btn btn-info sound-btn" onclick="tbsApp.send(0x18)">
+          <span class="icon">🎵</span>Sound 8
+        </button>
+      </div>
+    </div>
+
+    <!-- Volume + Bank -->
+    <div class="card">
+      <div class="card-title">🔉 Volume &amp; Sound Bank</div>
+      <div class="flex-row" style="align-items:stretch; margin-bottom:12px">
+        <button class="btn btn-ghost btn-big" onclick="tbsApp.volDown()">🔈 Vol –</button>
+        <div style="flex:1; display:flex; flex-direction:column; justify-content:center">
+          <div class="vol-bar-wrap"><div class="vol-bar" id="vol-bar" style="width:50%"></div></div>
+          <div class="center text-dim mt-8" id="vol-label">Volume: 50%</div>
+        </div>
+        <button class="btn btn-ghost btn-big" onclick="tbsApp.volUp()">🔊 Vol +</button>
+      </div>
+
+      <div class="flex-row" style="align-items:center; justify-content:center; gap:16px">
+        <button class="btn btn-ghost" onclick="tbsApp.prevBank()">⬅️ Prev Bank</button>
+        <div class="bank-display" id="bank-display">1</div>
+        <button class="btn btn-ghost" onclick="tbsApp.nextBank()">Next Bank ➡️</button>
+      </div>
+    </div>
+
+    <!-- Light Controls -->
+    <div class="card">
+      <div class="card-title">💡 Light Controls</div>
+
+      <div class="flex-row" style="margin-bottom:12px">
+        <button class="btn btn-success" style="flex:1" onclick="tbsApp.allLightsOn()">💡 All On</button>
+        <button class="btn btn-ghost"   style="flex:1" onclick="tbsApp.allLightsOff()">🌑 All Off</button>
+        <button class="btn btn-warning" style="flex:1" onclick="tbsApp.toggleHazard()">⚠️ Hazard</button>
+      </div>
+
+      <div class="light-grid">
+        <div class="light-btn" id="light-out1" onclick="tbsApp.toggleLight(1)">
+          <span class="icon">🔦</span>
+          <span>OUT1<br><small>Headlights</small></span>
+        </div>
+        <div class="light-btn" id="light-out2" onclick="tbsApp.toggleLight(2)">
+          <span class="icon">🔴</span>
+          <span>OUT2<br><small>Tail Lights</small></span>
+        </div>
+        <div class="light-btn" id="light-out3" onclick="tbsApp.toggleLight(3)">
+          <span class="icon">↩️</span>
+          <span>OUT3<br><small>Left Turn</small></span>
+        </div>
+        <div class="light-btn" id="light-out4" onclick="tbsApp.toggleLight(4)">
+          <span class="icon">↪️</span>
+          <span>OUT4<br><small>Right Turn</small></span>
+        </div>
+        <div class="light-btn" id="light-out5" onclick="tbsApp.toggleLight(5)">
+          <span class="icon">💥</span>
+          <span>OUT5<br><small>Muzzle/Aux</small></span>
+        </div>
+        <div class="light-btn" id="light-out6" onclick="tbsApp.toggleLight(6)">
+          <span class="icon">🚨</span>
+          <span>OUT6<br><small>Beacon/Aux</small></span>
+        </div>
+      </div>
+    </div>
+
+  </section><!-- /tab-control -->
+
+  <!-- ══════ TAB: WIRING ════════════════════════════════════ -->
+  <section id="tab-wiring" class="tab-panel">
+
+    <div class="card">
+      <div class="card-title">📋 Interactive Pin Diagram</div>
+      <p class="text-dim" style="margin-bottom:12px">
+        Hover or tap any pin on the board diagram below to see wiring details.
+        Pins glow yellow when hovered.
+      </p>
+
+      <!-- SVG Pin Diagram -->
+      <div id="pin-diagram-wrap">
+        <svg id="pcb-svg" viewBox="0 0 620 400" xmlns="http://www.w3.org/2000/svg"
+          role="img" aria-label="DasMikro TBS Mini PCB pin diagram">
+
+          <!-- Board body -->
+          <rect x="50" y="40" width="520" height="320" rx="16" fill="#1a2d1a" stroke="#3a6a3a" stroke-width="3"/>
+          <rect x="62" y="52" width="496" height="296" rx="12" fill="#1e3a1e" stroke="#2a5a2a" stroke-width="1"/>
+
+          <!-- Board label -->
+          <text x="310" y="230" text-anchor="middle" fill="#2a5a2a" font-size="28" font-family="monospace" font-weight="bold" opacity=".5">DasMikro TBS Mini</text>
+
+          <!-- PCB traces (decorative) -->
+          <g stroke="#1a4a1a" stroke-width="1" fill="none" opacity=".6">
+            <line x1="120" y1="100" x2="120" y2="320"/>
+            <line x1="200" y1="80"  x2="200" y2="340"/>
+            <line x1="320" y1="60"  x2="320" y2="380"/>
+            <line x1="440" y1="80"  x2="440" y2="340"/>
+            <line x1="500" y1="100" x2="500" y2="320"/>
+          </g>
+
+          <!-- ── Connector groups ─────────────── -->
+
+          <!-- LEFT SIDE: Power (top-left) -->
+          <g class="pcb-pin" data-pin="VCC" tabindex="0" role="button" aria-label="VCC Power input">
+            <circle cx="80" cy="80" r="10" fill="#c0392b" stroke="#e74c3c" stroke-width="2"/>
+            <text x="95" y="85" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">VCC (+)</text>
+          </g>
+          <g class="pcb-pin" data-pin="GND" tabindex="0" role="button" aria-label="GND Ground">
+            <circle cx="80" cy="108" r="10" fill="#2c2c2c" stroke="#888" stroke-width="2"/>
+            <text x="95" y="113" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">GND (–)</text>
+          </g>
+
+          <!-- LEFT SIDE: Serial TX/RX -->
+          <g class="pcb-pin" data-pin="TX" tabindex="0" role="button" aria-label="TX Serial transmit">
+            <circle cx="80" cy="145" r="10" fill="#f39c12" stroke="#f1c40f" stroke-width="2"/>
+            <text x="95" y="150" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">TX</text>
+          </g>
+          <g class="pcb-pin" data-pin="RX" tabindex="0" role="button" aria-label="RX Serial receive">
+            <circle cx="80" cy="173" r="10" fill="#8e44ad" stroke="#9b59b6" stroke-width="2"/>
+            <text x="95" y="178" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">RX</text>
+          </g>
+
+          <!-- LEFT SIDE: Speaker -->
+          <g class="pcb-pin" data-pin="SPK+" tabindex="0" role="button" aria-label="Speaker positive">
+            <circle cx="80" cy="210" r="10" fill="#1a7a3a" stroke="#00ff41" stroke-width="2"/>
+            <text x="95" y="215" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">SPK+</text>
+          </g>
+          <g class="pcb-pin" data-pin="SPK-" tabindex="0" role="button" aria-label="Speaker negative">
+            <circle cx="80" cy="238" r="10" fill="#2c2c2c" stroke="#888" stroke-width="2"/>
+            <text x="95" y="243" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">SPK–</text>
+          </g>
+
+          <!-- LEFT SIDE: PROP inputs -->
+          <g class="pcb-pin" data-pin="PROP1" tabindex="0" role="button" aria-label="PROP1 Throttle input">
+            <circle cx="80" cy="280" r="10" fill="#2980b9" stroke="#3498db" stroke-width="2"/>
+            <text x="95" y="285" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">PROP1</text>
+          </g>
+          <g class="pcb-pin" data-pin="PROP2" tabindex="0" role="button" aria-label="PROP2 Aux input">
+            <circle cx="80" cy="308" r="10" fill="#2980b9" stroke="#3498db" stroke-width="2"/>
+            <text x="95" y="313" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">PROP2</text>
+          </g>
+          <g class="pcb-pin" data-pin="PROP3" tabindex="0" role="button" aria-label="PROP3 Aux input">
+            <circle cx="80" cy="336" r="10" fill="#2980b9" stroke="#3498db" stroke-width="2"/>
+            <text x="95" y="341" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">PROP3</text>
+          </g>
+
+          <!-- RIGHT SIDE: Servo outputs -->
+          <g class="pcb-pin" data-pin="SERVO1" tabindex="0" role="button" aria-label="Servo output 1">
+            <circle cx="540" cy="80" r="10" fill="#16a085" stroke="#1abc9c" stroke-width="2"/>
+            <text x="425" y="85" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">SERVO OUT1</text>
+          </g>
+          <g class="pcb-pin" data-pin="SERVO2" tabindex="0" role="button" aria-label="Servo output 2">
+            <circle cx="540" cy="108" r="10" fill="#16a085" stroke="#1abc9c" stroke-width="2"/>
+            <text x="425" y="113" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">SERVO OUT2</text>
+          </g>
+
+          <!-- RIGHT SIDE: Light outputs OUT1–OUT6 -->
+          <g class="pcb-pin" data-pin="OUT1" tabindex="0" role="button" aria-label="OUT1 Headlights">
+            <circle cx="540" cy="150" r="10" fill="#c0392b" stroke="#e74c3c" stroke-width="2"/>
+            <text x="462" y="155" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">OUT1</text>
+          </g>
+          <g class="pcb-pin" data-pin="OUT2" tabindex="0" role="button" aria-label="OUT2 Tail lights">
+            <circle cx="540" cy="178" r="10" fill="#c0392b" stroke="#e74c3c" stroke-width="2"/>
+            <text x="462" y="183" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">OUT2</text>
+          </g>
+          <g class="pcb-pin" data-pin="OUT3" tabindex="0" role="button" aria-label="OUT3 Left turn signal">
+            <circle cx="540" cy="206" r="10" fill="#c0392b" stroke="#e74c3c" stroke-width="2"/>
+            <text x="462" y="211" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">OUT3</text>
+          </g>
+          <g class="pcb-pin" data-pin="OUT4" tabindex="0" role="button" aria-label="OUT4 Right turn signal">
+            <circle cx="540" cy="234" r="10" fill="#c0392b" stroke="#e74c3c" stroke-width="2"/>
+            <text x="462" y="239" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">OUT4</text>
+          </g>
+          <g class="pcb-pin" data-pin="OUT5" tabindex="0" role="button" aria-label="OUT5 Muzzle flash / aux">
+            <circle cx="540" cy="262" r="10" fill="#c0392b" stroke="#e74c3c" stroke-width="2"/>
+            <text x="462" y="267" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">OUT5</text>
+          </g>
+          <g class="pcb-pin" data-pin="OUT6" tabindex="0" role="button" aria-label="OUT6 Beacon / aux">
+            <circle cx="540" cy="290" r="10" fill="#c0392b" stroke="#e74c3c" stroke-width="2"/>
+            <text x="462" y="295" fill="#e0e0e0" font-size="11" font-family="monospace" font-weight="bold">OUT6</text>
+          </g>
+
+          <!-- PROG button -->
+          <g class="pcb-pin" data-pin="PROG" tabindex="0" role="button" aria-label="Program button">
+            <rect x="265" y="330" width="90" height="30" rx="6" fill="#4a3000" stroke="#f5c518" stroke-width="2"/>
+            <text x="310" y="350" text-anchor="middle" fill="#f5c518" font-size="11" font-family="monospace" font-weight="bold">PROG BTN</text>
+          </g>
+
+          <!-- Center chip (decorative) -->
+          <rect x="230" y="140" width="160" height="100" rx="6" fill="#0d0d1a" stroke="#2a3a6e" stroke-width="2"/>
+          <text x="310" y="185" text-anchor="middle" fill="#4fc3f7" font-size="10" font-family="monospace">MCU</text>
+          <text x="310" y="200" text-anchor="middle" fill="#4fc3f7" font-size="9" font-family="monospace">TBS MINI</text>
+
+          <!-- Legend -->
+          <g transform="translate(200,360)">
+            <circle cx="6"  cy="6" r="5" fill="#c0392b" stroke="#e74c3c" stroke-width="1.5"/>
+            <text x="14" y="10" fill="#888" font-size="9" font-family="monospace">Light Out</text>
+            <circle cx="76" cy="6" r="5" fill="#2980b9" stroke="#3498db" stroke-width="1.5"/>
+            <text x="84" y="10" fill="#888" font-size="9" font-family="monospace">Prop Input</text>
+            <circle cx="160" cy="6" r="5" fill="#16a085" stroke="#1abc9c" stroke-width="1.5"/>
+            <text x="168" y="10" fill="#888" font-size="9" font-family="monospace">Servo Out</text>
+          </g>
+
+        </svg>
+      </div><!-- /pin-diagram-wrap -->
+
+      <!-- Tooltip -->
+      <div id="pin-tooltip" role="tooltip"></div>
+    </div>
+
+    <!-- Wiring Guide -->
+    <div class="card">
+      <div class="card-title">🔧 Complete Wiring Guide</div>
+
+      <h3 class="text-blue mt-8" style="font-size:.95rem; margin-bottom:8px">
+        1️⃣ Basic Setup — Receiver → TBS Mini → ESC → Motor + Speaker
+      </h3>
+      <pre class="wiring-ascii">
+  RC RECEIVER                TBS MINI                   ESC / MOTOR
+  ┌──────────┐               ┌──────────────┐           ┌──────────┐
+  │  CH1/THR ├─(WHT sig)────▶│ PROP1        │           │          │
+  │          ├─(RED +5V)────▶│   +5V        │           │          │
+  │          ├─(BLK GND)────▶│   GND        │           │          │
+  │  CH2/AUX ├──────────────▶│ PROP2        │           │          │
+  │  CH3/AUX ├──────────────▶│ PROP3        │           │          │
+  └──────────┘               │              │           │          │
+                             │ SERVO OUT1 ──┼──────────▶│ Signal   │
+                             │              │           └──────────┘
+  BATTERY / BEC              │              │
+  ┌──────────┐               │              │           SPEAKER (8Ω)
+  │ +5V–9V  ├──────────────▶│ VCC (+)      │           ┌──────────┐
+  │ GND     ├──────────────▶│ GND (–)      ├──(SPK+)──▶│          │
+  └──────────┘               └──────────────┘    (SPK-)─│          │
+                                                         └──────────┘
+  ⚠️ IMPORTANT: Connect GND between all devices!</pre>
+
+      <h3 class="text-blue mt-16" style="font-size:.95rem; margin-bottom:8px">
+        2️⃣ Adding Lights (OUT1–OUT6, low-side switching)
+      </h3>
+      <pre class="wiring-ascii">
+  BATTERY +  ──────────────[LED]──[330Ω resistor]──┐
+                                                    │
+  TBS MINI OUT1 ──────────────────────────────────▶─┘ (OUT1 switches to GND)
+
+  Headlights: Battery+ ─▶ LED ─▶ 330Ω ─▶ OUT1 ─▶ GND (internal)
+  Tail lights: Battery+ ─▶ LED ─▶ 330Ω ─▶ OUT2 ─▶ GND (internal)
+  Left Turn:  Battery+ ─▶ LED ─▶ 330Ω ─▶ OUT3 ─▶ GND (internal)
+  Right Turn: Battery+ ─▶ LED ─▶ 330Ω ─▶ OUT4 ─▶ GND (internal)
+  Muzzle:     Battery+ ─▶ LED ─▶ 330Ω ─▶ OUT5 ─▶ GND (internal)
+  Beacon:     Battery+ ─▶ LED ─▶ 330Ω ─▶ OUT6 ─▶ GND (internal)
+
+  ⚠️ ALWAYS use a resistor (220–470Ω) with LEDs to prevent burning them out!</pre>
+
+      <h3 class="text-blue mt-16" style="font-size:.95rem; margin-bottom:8px">
+        3️⃣ Programming Setup — USB-to-Serial Adapter → TBS Mini
+      </h3>
+      <pre class="wiring-ascii">
+  USB-to-Serial Adapter          TBS Mini
+  (CP2102 / FTDI)
+  ┌─────────────────┐           ┌──────────────┐
+  │ TX  ────────────┼──────────▶│ RX           │
+  │ RX  ◀───────────┼───────────│ TX           │
+  │ GND ────────────┼──────────▶│ GND (–)      │
+  │ 5V  ────────────┼──────────▶│ VCC (+)      │  ← only if not powered separately
+  └─────────────────┘           └──────────────┘
+
+  ⚠️ TX ─▶ RX  and  RX ◀─ TX  (they CROSS over — common mistake!)
+  ⚠️ Make sure both devices share the same GND connection
+
+  Baud rate: 9600  |  8 data bits  |  No parity  |  1 stop bit  (8N1)</pre>
+
+      <h3 class="text-blue mt-16" style="font-size:.95rem; margin-bottom:8px">
+        4️⃣ Wire Color Conventions
+      </h3>
+      <div class="settings-group">
+        <table style="width:100%; font-size:.85rem; border-collapse:collapse">
+          <thead>
+            <tr>
+              <th style="text-align:left; color:var(--text-dim); padding:4px 8px">Color</th>
+              <th style="text-align:left; color:var(--text-dim); padding:4px 8px">Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td style="padding:6px 8px">🔴 Red</td><td style="padding:6px 8px">+5V / Positive power</td></tr>
+            <tr><td style="padding:6px 8px">⚫ Black / Brown</td><td style="padding:6px 8px">GND / Negative / Ground</td></tr>
+            <tr><td style="padding:6px 8px">⚪ White / Yellow</td><td style="padding:6px 8px">Signal wire (PWM from receiver)</td></tr>
+            <tr><td style="padding:6px 8px">🟠 Orange</td><td style="padding:6px 8px">Signal wire (some brands)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div><!-- /wiring card -->
+  </section><!-- /tab-wiring -->
+
+  <!-- ══════ TAB: SETTINGS ══════════════════════════════════ -->
+  <section id="tab-settings" class="tab-panel">
+
+    <!-- Engine Settings -->
+    <div class="card">
+      <div class="card-title">⚙️ Engine Settings</div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">RPM Limits</div>
+        <div class="slider-row">
+          <label for="set-idle-rpm">Idle RPM</label>
+          <input type="range" id="set-idle-rpm" min="0" max="100" value="15"
+            oninput="tbsApp.settingChange('idleRpm', this.value)" />
+          <span class="slider-val" id="val-idle-rpm">15%</span>
+        </div>
+        <div class="slider-row">
+          <label for="set-max-rpm">Max RPM</label>
+          <input type="range" id="set-max-rpm" min="0" max="100" value="100"
+            oninput="tbsApp.settingChange('maxRpm', this.value)" />
+          <span class="slider-val" id="val-max-rpm">100%</span>
+        </div>
+        <div class="slider-row">
+          <label for="set-start-delay">Start delay (s)</label>
+          <input type="range" id="set-start-delay" min="0" max="50" value="5"
+            oninput="tbsApp.settingChange('startDelay', this.value)" />
+          <span class="slider-val" id="val-start-delay">0.5s</span>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">Throttle &amp; Behavior</div>
+        <div class="toggle-row">
+          <span class="toggle-label">Throttle curve</span>
+          <select id="set-throttle-curve" style="width:auto; min-width:140px"
+            onchange="tbsApp.settingChange('throttleCurve', this.value)">
+            <option value="linear">Linear</option>
+            <option value="expo">Exponential</option>
+            <option value="log">Logarithmic</option>
+          </select>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">Auto-start engine</span>
+          <label class="toggle">
+            <input type="checkbox" id="set-autostart"
+              onchange="tbsApp.settingChange('autoStart', this.checked)" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Channel Calibration -->
+    <div class="card">
+      <div class="card-title">📐 Channel Calibration</div>
+      <p class="text-dim" style="margin-bottom:12px">
+        Move your transmitter sticks to the endpoints and press "Teach" to calibrate each channel.
+      </p>
+
+      <div id="cal-channels"></div>
+    </div>
+
+    <!-- Output Configuration -->
+    <div class="card">
+      <div class="card-title">💡 Output Configuration (OUT1–OUT6)</div>
+      <div id="out-config-rows"></div>
+    </div>
+
+    <!-- Servo Configuration -->
+    <div class="card">
+      <div class="card-title">🤖 Servo Configuration</div>
+      <div class="settings-group">
+        <div class="settings-group-title">Servo 1</div>
+        <div class="slider-row">
+          <label for="set-srv1-min">Min position</label>
+          <input type="range" id="set-srv1-min" min="0" max="100" value="10"
+            oninput="tbsApp.settingChange('srv1min', this.value)" />
+          <span class="slider-val" id="val-srv1-min">10%</span>
+        </div>
+        <div class="slider-row">
+          <label for="set-srv1-max">Max position</label>
+          <input type="range" id="set-srv1-max" min="0" max="100" value="90"
+            oninput="tbsApp.settingChange('srv1max', this.value)" />
+          <span class="slider-val" id="val-srv1-max">90%</span>
+        </div>
+      </div>
+      <div class="settings-group">
+        <div class="settings-group-title">Servo 2</div>
+        <div class="slider-row">
+          <label for="set-srv2-min">Min position</label>
+          <input type="range" id="set-srv2-min" min="0" max="100" value="10"
+            oninput="tbsApp.settingChange('srv2min', this.value)" />
+          <span class="slider-val" id="val-srv2-min">10%</span>
+        </div>
+        <div class="slider-row">
+          <label for="set-srv2-max">Max position</label>
+          <input type="range" id="set-srv2-max" min="0" max="100" value="90"
+            oninput="tbsApp.settingChange('srv2max', this.value)" />
+          <span class="slider-val" id="val-srv2-max">90%</span>
+        </div>
+        <div class="slider-row">
+          <label for="set-srv2-speed">Servo speed/rate</label>
+          <input type="range" id="set-srv2-speed" min="1" max="10" value="5"
+            oninput="tbsApp.settingChange('srv2speed', this.value)" />
+          <span class="slider-val" id="val-srv2-speed">5</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Save/Load -->
+    <div class="card">
+      <div class="card-title">💾 Save / Load Settings</div>
+      <p class="text-dim" style="margin-bottom:12px">
+        Settings are saved automatically to your browser. Use the buttons below to export or reset.
+      </p>
+      <div class="flex-row">
+        <button class="btn btn-info" onclick="tbsApp.exportSettings()">📤 Export JSON</button>
+        <button class="btn btn-ghost" onclick="tbsApp.resetSettings()">🔄 Reset Defaults</button>
+      </div>
+    </div>
+
+  </section><!-- /tab-settings -->
+
+  <!-- ══════ TAB: CONSOLE ═══════════════════════════════════ -->
+  <section id="tab-console" class="tab-panel">
+
+    <div class="card">
+      <div class="card-title">🖥️ Serial Monitor</div>
+
+      <div id="serial-log" aria-live="polite" aria-label="Serial communication log"></div>
+
+      <div class="flex-row" style="margin-bottom:10px">
+        <button class="btn btn-ghost" onclick="tbsApp.clearLog()">🗑️ Clear</button>
+        <button class="btn btn-ghost" onclick="tbsApp.copyLog()">📋 Copy</button>
+      </div>
+
+      <div style="display:flex; gap:8px">
+        <input type="text" id="cmd-input" placeholder="Hex byte (e.g. 0x21 or 33)" style="flex:1"
+          onkeydown="if(event.key==='Enter') tbsApp.sendCustomCmd()" />
+        <button class="btn btn-primary" onclick="tbsApp.sendCustomCmd()">Send</button>
+      </div>
+      <p class="text-dim mt-8">Enter a hex value (0x21) or decimal (33) and press Send or Enter.</p>
+    </div>
+
+    <!-- Command Reference -->
+    <div class="card">
+      <div class="card-title">📖 Command Reference</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%; font-size:.82rem; border-collapse:collapse">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border)">
+              <th style="text-align:left; padding:6px 8px; color:var(--text-dim)">Hex</th>
+              <th style="text-align:left; padding:6px 8px; color:var(--text-dim)">Decimal</th>
+              <th style="text-align:left; padding:6px 8px; color:var(--text-dim)">Command</th>
+            </tr>
+          </thead>
+          <tbody id="cmd-ref-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </section><!-- /tab-console -->
+
+</main><!-- /main-content -->
+
+<!-- ══════════════════════════════════════════════════════════
+     BOTTOM TAB NAV
+════════════════════════════════════════════════════════════ -->
+<nav id="tab-nav" role="navigation" aria-label="Main navigation">
+  <button class="tab-btn active" data-tab="control" onclick="tbsApp.switchTab('control')">
+    <span class="tab-icon">🎮</span>Control
+  </button>
+  <button class="tab-btn" data-tab="wiring" onclick="tbsApp.switchTab('wiring')">
+    <span class="tab-icon">📋</span>Wiring
+  </button>
+  <button class="tab-btn" data-tab="settings" onclick="tbsApp.switchTab('settings')">
+    <span class="tab-icon">⚙️</span>Settings
+  </button>
+  <button class="tab-btn" data-tab="console" onclick="tbsApp.switchTab('console')">
+    <span class="tab-icon">🖥️</span>Console
+  </button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>
