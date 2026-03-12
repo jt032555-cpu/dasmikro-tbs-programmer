@@ -3,7 +3,7 @@
  * Web Serial API controller for the DasMikro TBS Mini Sound & Light Unit
  * Works in Chrome 89+ / Edge 89+ (Web Serial API required)
  *
- * Serial protocol: 9600 baud, 8N1, single-byte hex commands
+ * Serial protocol: 115200 baud, 8N1, single-byte hex commands
  */
 
 'use strict';
@@ -251,25 +251,33 @@ const tbsApp = (() => {
     try {
       _port = await navigator.serial.requestPort();
 
-      await new Promise(r => setTimeout(r, 300));
+      var _info = _port.getInfo ? _port.getInfo() : {};
+      _log('info', 'Port selected' + (_info.usbVendorId ? ' (USB VID:' + _info.usbVendorId.toString(16).toUpperCase() + ' PID:' + _info.usbProductId.toString(16).toUpperCase() + ')' : ''));
+
+      _log('info', 'Waiting for USB adapter to stabilize...');
+      await new Promise(r => setTimeout(r, 500));
 
       let opened = false;
-      for (let attempt = 1; attempt <= 2; attempt++) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          await _port.open({ baudRate: 9600 });
+          _log('info', 'Opening port at 115200 baud (attempt ' + attempt + ')...');
+          await _port.open({ baudRate: 115200 });
           opened = true;
+          _log('info', 'Port opened successfully');
           break;
         } catch (openErr) {
-          if (attempt < 2) {
-            _log('info', 'Open attempt ' + attempt + ' failed, retrying...');
+          _log('error', 'Open attempt ' + attempt + ' failed: ' + openErr.message);
+          if (attempt < 3) {
+            _log('info', 'Retrying in 1 second...');
             try { await _port.close(); } catch (e) {}
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 1000));
           } else {
             throw openErr;
           }
         }
       }
 
+      _log('info', 'Acquiring read/write streams...');
       _writer = _port.writable.getWriter();
       _reader = _port.readable.getReader();
 
@@ -281,11 +289,10 @@ const tbsApp = (() => {
       document.getElementById('btn-connect').style.display = 'none';
       document.getElementById('btn-disconnect').style.display = '';
 
-      var info = _port.getInfo ? _port.getInfo() : {};
       document.getElementById('port-info').textContent =
-        info.usbVendorId ? 'USB ' + info.usbVendorId.toString(16).toUpperCase() + ':' + info.usbProductId.toString(16).toUpperCase() : '';
+        _info.usbVendorId ? 'USB ' + _info.usbVendorId.toString(16).toUpperCase() + ':' + _info.usbProductId.toString(16).toUpperCase() : '';
 
-      _log('info', 'Connected at 9600 baud, 8N1');
+      _log('info', 'Connected at 115200 baud, 8N1');
 
       if (_portDisconnectHandler) {
         _port.removeEventListener('disconnect', _portDisconnectHandler);
